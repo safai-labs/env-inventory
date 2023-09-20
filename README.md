@@ -24,7 +24,7 @@ env-inventory = "0.2" # Check crates.io for the latest version
 1. Define required environment variables using the `RequiredVar` struct.
 
 ```rust
-env_inventory::register_env_var!("DATABASE_URL");
+env_inventory::register!("DATABASE_URL");
 ```
 
 2. Load and validate environment variables from your TOML configurations:
