@@ -19,6 +19,16 @@ use std::path::Path;
 use toml::Value;
 use thiserror::Error;
 
+#[macro_export]
+macro_rules! register_env_vars {
+    ($($var:expr),* $(,)?) => {
+        $(
+            inventory::submit!(RequiredVar::new($var));
+        )*
+    };
+}
+
+/// Error type for the EnvInventory module
 #[derive(Error, Debug)]
 pub enum EnvInventoryError {
     #[error("Failed to read the settings file at {0}")]
@@ -41,7 +51,7 @@ pub struct RequiredVar {
 inventory::collect!(RequiredVar);
 
 impl RequiredVar {
-    pub const fn new(var_name: &'static str, _default: Option<&'static str>) -> Self {
+    pub const fn new(var_name: &'static str) -> Self {
         Self { var_name }
     }
     pub fn is_set(&self) -> bool {
@@ -93,7 +103,7 @@ pub(crate) fn load_toml_settings<P: AsRef<Path>>(path: P, section: &str) -> Resu
 }
 
 
-/// loads the settings from the settings file (toml) 
+/// loads the settings from the settings file (toml)
 /// and sets the environment variables
 pub fn load_and_validate_env_vars<P: AsRef<Path>>(config_paths: &[P], section: &str)
     -> Result<(), EnvInventoryError>
@@ -127,9 +137,10 @@ pub fn load_and_validate_env_vars<P: AsRef<Path>>(config_paths: &[P], section: &
     // Override the environment variables with our merged settings if they aren't already set
     for (key, value) in merged_settings.iter() {
         if env::var(key).is_err() {
-            eprintln!("Setting {} to {}", key, value);
             env::set_var(key, value);
         }
+        let value = env::var(key).unwrap();
+        tracing::info!("{} = {}", key, value);
     }
 
     let missing_vars: Vec<String> = inventory::iter::<RequiredVar>()
@@ -139,10 +150,10 @@ pub fn load_and_validate_env_vars<P: AsRef<Path>>(config_paths: &[P], section: &
     if missing_vars.is_empty() {
         Ok(())
     } else {
+        tracing::warn!("Missing required environment variables: {:?}", missing_vars);
         Err(EnvInventoryError::MissingEnvVars(missing_vars))
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,16 +161,14 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    inventory::submit!(RequiredVar::new("TEST_ENV_VAR", None));
+    register_env_vars!("TEST_ENV_VAR");
 
     #[test]
     fn test_load_single_toml() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("settings.conf");
-        eprintln!("dir: {:?}", file_path);
 
         fs::write(&file_path, "[env]\nTEST_ENV_VAR = \"test_value\"").unwrap();
-        
 
         load_and_validate_env_vars(&[file_path], "env").unwrap();
         assert_eq!(env::var("TEST_ENV_VAR").unwrap(), "test_value");
@@ -191,7 +200,7 @@ mod tests {
     fn test_missing_env_vars() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("settings.conf");
-        
+
         // Write a file without MISSING_VAR
         fs::write(&file_path, "[env]\nSOME_OTHER_VAR = \"some_value\"").unwrap();
 
@@ -199,17 +208,18 @@ mod tests {
         env::remove_var("MISSING_VAR");
 
         // Register MISSING_VAR as a required environment variable
-        inventory::submit!(RequiredVar::new("MISSING_VAR", None));
+        register_env_vars!("MISSING_VAR");
 
         // Since MISSING_VAR isn't in the environment and also isn't in the TOML files,
         // the function should return an error.
         assert!(load_and_validate_env_vars(&[file_path], "env").is_err());
     }
+
     #[test]
     fn test_present_env_vars() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("settings.conf");
-    
+
         // Write a file with PRESENT_VAR
         fs::write(&file_path, r#"
         [env]
@@ -217,19 +227,14 @@ mod tests {
         MISSING_VAR = "missing_value"
         TEST_ENV_VAR = "test_value" 
         "#).unwrap();
-    
-        // dump the file
-        let content = fs::read_to_string(&file_path).unwrap();
-        eprintln!("content:\n{}", content);
 
         // Ensure the environment variable isn't set before the test
         env::remove_var("PRESENT_VAR");
-    
+
         // Register PRESENT_VAR as a required environment variable
-        inventory::submit!(RequiredVar::new("PRESENT_VAR", None));
-    
+        register_env_vars!("PRESENT_VAR");
+
         // Since PRESENT_VAR is in the TOML file, the function should run without errors
         load_and_validate_env_vars(&[file_path], "env").unwrap();
     }
-    
 }
