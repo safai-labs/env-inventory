@@ -16,7 +16,7 @@ Add `env-inventory` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-env-inventory = "0.1.0" # Check crates.io for the latest version
+env-inventory = "0.2" # Check crates.io for the latest version
 ```
 
 ### Usage
@@ -40,23 +40,12 @@ The library provides an `EnvInventoryError` enum to handle various error types s
 - Reading or parsing the settings file.
 - Missing required environment variables.
 
-## Testing
-
-We provide a suite of tests to validate core functionalities. Run tests with:
-
-```bash
-cargo test
-```
-
 ## Contributing
 
 Pull requests are welcome. Please ensure that your PR passes all the tests before submitting.
+Unless otherwise stated, your contributions are assumed to be under the MIT license.
 
 ## License
 
 [MIT](LICENSE)
-
----
-
-Feel free to modify the README as needed to tailor it to your project's specific needs and details!
 
