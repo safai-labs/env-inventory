@@ -15,7 +15,7 @@ repository = "https://github.com/safai-labs/env-inventory.git"
 inventory = "0.3"
 thiserror = "1.0"
 toml = "0.8.0"
-tracing = "*"
+tracing = "0.1"
 
 [profile.release]
 incremental = false
