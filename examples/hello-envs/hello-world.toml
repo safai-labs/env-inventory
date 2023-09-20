@@ -1,0 +1,5 @@
+[env]
+MORE_SETTINGS = "more settings"
+HELLO = "Heya, "
+# Uncomment the line below to show the error of missing env variable
+# WORLD = "Nether world"
