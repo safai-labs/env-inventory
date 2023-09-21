@@ -24,7 +24,7 @@
 // ce-env/src/lib.rs
 
 #![deny(missing_docs)]
-extern crate inventory;
+pub extern crate inventory;
 extern crate thiserror;
 extern crate toml;
 
@@ -69,7 +69,7 @@ macro_rules! register {
         const _: () = {
             use $crate::RequiredVar;
             $(
-                inventory::submit!(RequiredVar::new($var));
+                $crate::inventory::submit!(RequiredVar::new($var));
             )*
         };
     };
