@@ -52,21 +52,27 @@ use toml::Value;
 /// # #[macro_use] extern crate env_inventory;
 /// # fn main() {
 /// register!("DATABASE_URL", "REDIS_URL", "API_KEY");
+/// register!("LOG_LEVEL" => "debug", "CACHE_SIZE" => 1024);
 /// # }
 /// ```
 ///
-/// The above registers three environment variables: `DATABASE_URL`,
-/// `REDIS_URL`, and `API_KEY`.
+/// The first call registers three environment variables: `DATABASE_URL`,
+/// `REDIS_URL`, and `API_KEY`. The second call registers two environment variables
+/// with default values: `LOG_LEVEL` with a default of `"debug"`, and `CACHE_SIZE`
+/// with a default of `1024`.
 ///
 /// # Parameters
 ///
 /// - `$($var:expr),*`: A comma-separated list of string literals, each
 ///   representing an environment variable to register.
+/// - `$($var:expr => $default:expr),*`: A comma-separated list of pairs, where
+///   each pair consists of a string literal representing an environment variable
+///   and its default value.
 ///
 /// # Panics
 ///
 /// This macro will panic at compile-time if any of the provided arguments are
-/// not string literals.
+/// not string literals or if the pairs don't have the appropriate structure.
 #[macro_export]
 macro_rules! register {
     ($var:ident) => {
@@ -204,7 +210,10 @@ inventory::collect!(RequiredVar);
 
 impl RequiredVar {
     pub const fn new(var_name: &'static str) -> Self {
-        Self { var_name, default: None }
+        Self {
+            var_name,
+            default: None,
+        }
     }
     pub fn is_set(&self) -> bool {
         env::var(self.var_name).is_ok()
