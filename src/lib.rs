@@ -19,7 +19,11 @@
 //! employing the provided utilities to load and validate these variables either
 //! from the environment or TOML files.
 //!
-//! Note: `.dotenv` file support isn't available currently.
+//! Note: `dotenv` file support isn't available currently.
+//! Note: This crate is still in its early stages and is subject to change.
+//! Note: `shell-expansions` (probably using
+//! [https://docs.rs/shellexpand/latest/shellexpand/fn.tilde.html](shellexpand))
+//! coming soon.
 
 // ce-env/src/lib.rs
 
@@ -65,6 +69,55 @@ use toml::Value;
 /// not string literals.
 #[macro_export]
 macro_rules! register {
+    ($var:ident) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $crate::inventory::submit!(RequiredVar::new(stringify!($var)));
+        };
+    };
+    ($var:ident = $default:expr) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $crate::inventory::submit!(RequiredVar {
+                var_name: stringify!($var),
+                default: Some(ToString::to_string($default)),
+            });
+        };
+    };
+    ($($var:ident),* $(,)?) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $(
+                $crate::inventory::submit!(RequiredVar::new(stringify!($var)));
+            )*
+        };
+    };
+    ($($var:ident = $default:expr),* $(,)?) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $(
+                $crate::inventory::submit!(RequiredVar {
+                    var_name: stringify!($var),
+                    default: Some(ToString::to_string($default)),
+                });
+            )*
+        };
+    };
+    ($var:expr) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $crate::inventory::submit!(RequiredVar::new($var));
+        };
+    };
+    ($var:expr => $default:expr) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $crate::inventory::submit!(RequiredVar {
+                var_name: $var,
+                default: Some(ToString::to_string($default)),
+            });
+        };
+    };
     ($($var:expr),* $(,)?) => {
         const _: () = {
             use $crate::RequiredVar;
@@ -73,6 +126,18 @@ macro_rules! register {
             )*
         };
     };
+    ($($var:expr => $default:expr),* $(,)?) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $(
+                $crate::inventory::submit!(RequiredVar {
+                    var_name: $var,
+                    default: Some(ToString::to_string($default)),
+                });
+            )*
+        };
+    };
+
 }
 
 /// Represents the potential errors that can be encountered by the
@@ -132,14 +197,14 @@ pub enum EnvInventoryError {
 #[derive(Debug, Clone)]
 pub struct RequiredVar {
     pub var_name: &'static str,
-    // pub default: Option<&'static str>,
+    pub default: Option<&'static str>,
 }
 
 inventory::collect!(RequiredVar);
 
 impl RequiredVar {
     pub const fn new(var_name: &'static str) -> Self {
-        Self { var_name }
+        Self { var_name, default: None }
     }
     pub fn is_set(&self) -> bool {
         env::var(self.var_name).is_ok()
