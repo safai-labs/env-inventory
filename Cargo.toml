@@ -8,6 +8,7 @@ authors = [ "Ahmed Masud <ahmed.masud@saf.ai>"]
 edition = "2021"
 rust-version = "1.61"
 repository = "https://github.com/safai-labs/env-inventory.git"
+docs = "https://docs.rs/env-inventory"
 
 [lib]
 
