@@ -33,6 +33,7 @@ extern crate thiserror;
 extern crate toml;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -425,7 +426,7 @@ pub fn load_and_validate_env_vars<P: AsRef<Path>>(
         tracing::info!("{} = {}", key, value);
     }
 
-    let missing_vars: Vec<String> = inventory::iter::<RequiredVar>()
+    let missing_vars: HashSet<String> = inventory::iter::<RequiredVar>()
         .filter_map(|var| {
             if var.is_set() {
                 None
@@ -434,6 +435,8 @@ pub fn load_and_validate_env_vars<P: AsRef<Path>>(
             }
         })
         .collect();
+    let mut missing_vars = missing_vars.into_iter().collect::<Vec<String>>();
+    missing_vars.sort();
 
     if missing_vars.is_empty() {
         Ok(())
