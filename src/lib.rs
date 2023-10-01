@@ -87,7 +87,8 @@ macro_rules! register {
             use $crate::RequiredVar;
             $crate::inventory::submit!(RequiredVar {
                 var_name: stringify!($var),
-                default: Some(ToString::to_string($default)),
+                default: Some($default),
+                source: Some(file!()),
             });
         };
     };
@@ -105,7 +106,8 @@ macro_rules! register {
             $(
                 $crate::inventory::submit!(RequiredVar {
                     var_name: stringify!($var),
-                    default: Some(ToString::to_string($default)),
+                    default: Some($default),
+                    source: Some(file!()),
                 });
             )*
         };
@@ -122,6 +124,7 @@ macro_rules! register {
             $crate::inventory::submit!(RequiredVar {
                 var_name: $var,
                 default: Some(ToString::to_string($default)),
+                source: Some(file!()),
             });
         };
     };
@@ -140,6 +143,7 @@ macro_rules! register {
                 $crate::inventory::submit!(RequiredVar {
                     var_name: $var,
                     default: Some(ToString::to_string($default)),
+                    source: Some(file!()),
                 });
             )*
         };
@@ -201,23 +205,41 @@ pub enum EnvInventoryError {
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequiredVar {
     pub var_name: &'static str,
     pub default: Option<&'static str>,
+    pub source: Option<&'static str>,
 }
 
 inventory::collect!(RequiredVar);
 
 impl RequiredVar {
+    /// Creates a new `RequiredVar` instance at compile time.
     pub const fn new(var_name: &'static str) -> Self {
         Self {
             var_name,
             default: None,
+            source: None,
         }
     }
+
+    /// Checks if the variable is set in the environment or has a default value.
     pub fn is_set(&self) -> bool {
-        env::var(self.var_name).is_ok()
+        // If the variable is set in the environment, or 
+        // we have a default value, we're good
+        env::var(self.var_name).is_ok() || self.default.is_some()
+    }
+
+    /// Gets the value of the variable from the environment or the default.
+    pub fn get(&self) -> Option<String> {
+        match env::var(self.var_name) {
+            Ok(value) => Some(value),
+            Err(_) => match self.default {
+                Some(value) => Some(value.to_string()),
+                None => None,
+            },
+        }
     }
 }
 
@@ -265,21 +287,24 @@ impl RequiredVar {
 ///   missing.
 
 pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
-    let missing_vars: Vec<String> = inventory::iter::<RequiredVar>()
-        .filter_map(|var| {
-            if var.is_set() {
-                None
-            } else {
-                Some(var.var_name.to_string())
-            }
-        })
-        .collect();
+    let missing_vars: HashSet<String> = inventory::iter::<RequiredVar>()
+    .filter_map(|var| {
+        if var.is_set() {
+            None
+        } else {
+            // Some(var.var_name.to_string())
+            format!("{} (default: \"{}\")", var.var_name.to_string(), var.default.unwrap_or("")).into()
+        }
+    })
+    .collect();
+    let mut missing_vars = missing_vars.into_iter().collect::<Vec<String>>();
+    missing_vars.sort();
 
     if missing_vars.is_empty() {
         Ok(())
     } else {
-        type E = EnvInventoryError;
-        Err(E::MissingEnvVars(missing_vars))
+        tracing::warn!("Missing required environment variables: {:?}", missing_vars);
+        Err(EnvInventoryError::MissingEnvVars(missing_vars))
     }
 }
 
@@ -287,10 +312,21 @@ pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
 /// that are expected from different parts of the application.
 pub fn list_all_vars() -> Vec<String> {
     let mut v: Vec<String> = inventory::iter::<RequiredVar>()
-        .map(|var| var.var_name.to_string())
+        .map(|var| {
+            var.var_name.to_string()
+        })
         .collect();
     v.sort();
     v
+}
+
+/// Dump all the registered environment variables.
+
+pub fn dump_all_vars() {
+    let mut v: Vec<String> = inventory::iter::<RequiredVar>()
+        .map(|v| format!("{:#?}", v)).collect();
+    v.sort();
+    dbg!(v);
 }
 
 /// Loads the settings from a TOML file and returns them as a `HashMap`.
@@ -425,25 +461,8 @@ pub fn load_and_validate_env_vars<P: AsRef<Path>>(
         let value = env::var(key).unwrap();
         tracing::info!("{} = {}", key, value);
     }
+    return validate_env_vars();
 
-    let missing_vars: HashSet<String> = inventory::iter::<RequiredVar>()
-        .filter_map(|var| {
-            if var.is_set() {
-                None
-            } else {
-                Some(var.var_name.to_string())
-            }
-        })
-        .collect();
-    let mut missing_vars = missing_vars.into_iter().collect::<Vec<String>>();
-    missing_vars.sort();
-
-    if missing_vars.is_empty() {
-        Ok(())
-    } else {
-        tracing::warn!("Missing required environment variables: {:?}", missing_vars);
-        Err(EnvInventoryError::MissingEnvVars(missing_vars))
-    }
 }
 
 #[cfg(test)]
