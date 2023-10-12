@@ -82,69 +82,56 @@ macro_rules! register {
             $crate::inventory::submit!(RequiredVar::new(stringify!($var)));
         };
     };
-    ($var:ident = $default:expr) => {
-        const _: () = {
-            use $crate::RequiredVar;
-            $crate::inventory::submit!(RequiredVar {
-                var_name: stringify!($var),
-                default: Some($default),
-                source: Some(file!()),
-            });
-        };
-    };
+
     ($($var:ident),* $(,)?) => {
         const _: () = {
             use $crate::RequiredVar;
             $(
-                $crate::inventory::submit!(RequiredVar::new(stringify!($var)));
+                $crate::register!($var);
             )*
         };
     };
+
+
+    ($var:ident = $default:expr) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $crate::inventory::submit!(RequiredVar {
+                name: stringify!($var),
+                default: Some($default),
+                source: file!(),
+                priority: $crate::Priority::Library,
+            });
+        };
+    };
+
     ($($var:ident = $default:expr),* $(,)?) => {
         const _: () = {
             use $crate::RequiredVar;
             $(
-                $crate::inventory::submit!(RequiredVar {
-                    var_name: stringify!($var),
-                    default: Some($default),
-                    source: Some(file!()),
-                });
+                $crate::register!($var = $default);
             )*
         };
     };
-    ($var:expr) => {
-        const _: () = {
-            use $crate::RequiredVar;
-            $crate::inventory::submit!(RequiredVar::new($var));
-        };
-    };
-    ($var:expr => $default:expr) => {
+
+    ($var:ident = $default:expr; $priority:ident) => {
         const _: () = {
             use $crate::RequiredVar;
             $crate::inventory::submit!(RequiredVar {
-                var_name: $var,
-                default: Some(ToString::to_string($default)),
-                source: Some(file!()),
+                name: stringify!($var),
+                default: Some($default),
+                source: file!(),
+                priority: $crate::Priority::$priority,
             });
         };
     };
-    ($($var:expr),* $(,)?) => {
+
+
+    ($($var:ident = $default:expr),* $(,)?; $priority:ident) => {
         const _: () = {
             use $crate::RequiredVar;
             $(
-                $crate::inventory::submit!(RequiredVar::new($var));
-            )*
-        };
-    };
-    ($($var:expr => $default:expr),* $(,)?) => {
-        const _: () = {
-            use $crate::RequiredVar;
-            $(
-                $crate::inventory::submit!(RequiredVar {
-                    var_name: $var,
-                    default: Some(ToString::to_string($default)),
-                    source: Some(file!()),
-                });
+                $crate::register!($var = $default; $priority);
             )*
         };
     };
@@ -202,25 +189,42 @@ pub enum EnvInventoryError {
     /// variable.
     #[error("Missing required environment variables: {0:?}")]
     MissingEnvVars(Vec<String>),
+
+    /// Represents the absence of required environment variables.
+    /// variable.
+    #[error("Missing required environment variables: {0:?}")]
+    MissingEnvVar(String),
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Priority {
+    /// The default value is from a library or unknown.
+    Unknown,
+    Library,
+    Binary,
+
 }
 
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequiredVar {
-    pub var_name: &'static str,
+    pub name: &'static str,
     pub default: Option<&'static str>,
-    pub source: Option<&'static str>,
+    pub source: &'static str,
+    pub priority: Priority,
 }
 
 inventory::collect!(RequiredVar);
 
 impl RequiredVar {
     /// Creates a new `RequiredVar` instance at compile time.
-    pub const fn new(var_name: &'static str) -> Self {
+    pub const fn new(name: &'static str) -> Self {
         Self {
-            var_name,
+            name,
             default: None,
-            source: None,
+            source: "<none>",
+            priority: Priority::Library,
         }
     }
 
@@ -228,12 +232,12 @@ impl RequiredVar {
     pub fn is_set(&self) -> bool {
         // If the variable is set in the environment, or 
         // we have a default value, we're good
-        env::var(self.var_name).is_ok() || self.default.is_some()
+        env::var(self.name).is_ok() || self.default.is_some()
     }
 
     /// Gets the value of the variable from the environment or the default.
     pub fn get(&self) -> Option<String> {
-        match env::var(self.var_name) {
+        match env::var(self.name) {
             Ok(value) => Some(value),
             Err(_) => match self.default {
                 Some(value) => Some(value.to_string()),
@@ -292,8 +296,8 @@ pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
         if var.is_set() {
             None
         } else {
-            // Some(var.var_name.to_string())
-            format!("{} (default: \"{}\")", var.var_name.to_string(), var.default.unwrap_or("")).into()
+            Some(var.name.to_string())
+            // format!("{} (default: \"{}\")", var.name.to_string(), var.default.unwrap_or("")).into()
         }
     })
     .collect();
@@ -313,7 +317,7 @@ pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
 pub fn list_all_vars() -> Vec<String> {
     let mut v: Vec<String> = inventory::iter::<RequiredVar>()
         .map(|var| {
-            var.var_name.to_string()
+            var.name.to_string()
         })
         .collect();
     v.sort();
@@ -327,6 +331,61 @@ pub fn dump_all_vars() {
         .map(|v| format!("{:#?}", v)).collect();
     v.sort();
     dbg!(v);
+}
+
+#[doc(hidden)]
+pub fn map() -> HashMap<&'static str, String> {
+    let mut seen_vars: HashMap<&'static str, String> = HashMap::new();
+
+    for var in inventory::iter::<RequiredVar>() {
+        if !seen_vars.contains_key(var.name) {
+            if let Some(value) = var.get() {
+                seen_vars.insert(var.name, value);
+            }
+        }
+    }
+    seen_vars
+}
+
+/// Expand all the registered environment variables.
+/// that are expected from different parts of the application.
+/// So for instance if you have a variable like this:
+/// ```rust (ignore)
+/// // somewhere
+/// register!(TEST_ENV_VAR = "~/test");
+/// // elsewhere you do this:
+/// register!(LIBDIR = "${TEST_ENV_VAR}/lib");
+/// // then you can do this:
+///
+/// ```
+/// then expanded_map will update the env and expand the env.
+/// TODO:
+/// 1. This should be done in the register macro.
+pub fn expanded_map() -> Result<HashMap<String, String>, EnvInventoryError> {
+    let mut seen_vars: HashMap<String, String> = HashMap::new();
+
+    for var in inventory::iter::<RequiredVar>() {
+        if !seen_vars.contains_key(var.name) {
+            if let Some(value) = var.get() {
+                let value = shellexpand::full(&value)
+                    .map_err(|e| EnvInventoryError::MissingEnvVar(
+                        e.to_string()) 
+                    )?
+                    .to_string();
+                std::env::set_var(var.name, &value);
+                seen_vars.insert(var.name.to_string(), value);
+            }
+        }
+    }
+    for (key, value) in seen_vars.iter() {
+        let value = shellexpand::full(&value)
+            .map_err(|e| EnvInventoryError::MissingEnvVar(
+                e.to_string()) 
+            )?
+            .to_string();
+        std::env::set_var(key, &value);
+    }
+    Ok(seen_vars)
 }
 
 /// Loads the settings from a TOML file and returns them as a `HashMap`.
@@ -419,6 +478,90 @@ pub(crate) fn load_toml_settings<P: AsRef<Path>>(
 ///   missing.
 
 pub fn load_and_validate_env_vars<P: AsRef<Path>>(
+    config_paths: &[P],
+    section: &str,
+) -> Result<(), EnvInventoryError> {
+    let mut merged_settings = HashMap::new();
+
+    for (index, path) in config_paths.iter().enumerate() {
+        let settings = load_toml_settings(path.as_ref(), section);
+
+        match settings {
+            Ok(current_settings) => {
+                // Merge settings with nth file being most significant
+                for (key, value) in current_settings.iter() {
+                    merged_settings.insert(key.clone(), value.clone());
+                }
+            }
+            Err(e) => {
+                if index == 0 {
+                    // The first file is mandatory
+                    return Err(e);
+                } else {
+                    // Subsequent files are optional, but let's warn for transparency
+                    eprintln!(
+                        "Warning: Could not load settings from {:?}. Reason: {}",
+                        path.as_ref(),
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // let mut missing_vars = Vec::new();
+
+    for var in inventory::iter::<RequiredVar>() {
+        // 1) Check if set in env
+        if env::var(var.name).is_ok() {
+            continue;
+        }
+
+        // 2) Check if set in config files
+        if let Some(value) = merged_settings.get(var.name) {
+            env::set_var(var.name, value);
+            continue;
+        }
+
+        // 3) Check if set by binary
+        let binary_default = inventory::iter::<RequiredVar>()
+            .filter(|v| v.name == var.name && v.priority == Priority::Binary)
+            .last() // Get the most significant binary default
+            .and_then(|v| v.default);
+
+        if let Some(default_value) = binary_default {
+            env::set_var(var.name, default_value);
+            continue;
+        }
+
+        // 4) Check if set by library (with nth library being the most significant)
+        let library_default = inventory::iter::<RequiredVar>()
+            .filter(|v| v.name == var.name && v.priority == Priority::Library)
+            .last() // Get the most significant library default
+            .and_then(|v| v.default);
+
+        if let Some(default_value) = library_default {
+            env::set_var(var.name, default_value);
+            continue;
+        }
+
+        // 5) If not set, add to missing
+        // missing_vars.push(var.name.to_string());
+    }
+
+    expanded_map()?;
+    validate_env_vars()
+
+    // if missing_vars.is_empty() {
+    //     Ok(())
+    // } else {
+    //     tracing::warn!("Missing required environment variables: {:?}", missing_vars);
+    //     Err(EnvInventoryError::MissingEnvVars(missing_vars))
+    // }
+}
+
+#[doc(hidden)]
+pub fn __old_load_and_validate_env_vars<P: AsRef<Path>>(
     config_paths: &[P],
     section: &str,
 ) -> Result<(), EnvInventoryError> {

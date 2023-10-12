@@ -1,12 +1,15 @@
-# Env-Inventory: Environment Variable Management
 
-`env-inventory` is a Rust library designed to manage and consolidate the process of fetching parameters from the environment. It offers a flexible system to work with environment variables and configurations stored in TOML files.
+# Env-Inventory: Centralized Environment Variable Management
 
-## Features
+`env-inventory` is a Rust library designed to simplify and consolidate the process of fetching, managing, and validating parameters from the environment. Whether you're building a standalone application or integrating multiple crates, `env-inventory` ensures that all required environment variables are set and accessible in a unified manner. It also seamlessly integrates with TOML files, allowing for hierarchical configurations and fallbacks.
 
-- 🌍 **Unified Access**: Streamline the way parameters are fetched from the environment.
-- 📁 **TOML Support**: Read and merge configurations directly from TOML files, allowing hierarchical configurations.
-- ✅ **Validation**: Validate and ensure that required environment variables are set.
+## Key Benefits
+
+- 🌐 **Centralized Registration**: Any crate or module can register its required environment variables, ensuring that all dependencies on environment variables are explicitly declared and checked.
+- 🌍 **Unified Access**: Streamline and standardize the way parameters are fetched from the environment, ensuring consistent access across your application.
+- 📁 **TOML Support**: Read and merge configurations directly from TOML files. This is especially useful for managing different configurations for development, testing, and production environments.
+- ✅ **Validation**: Before your application starts its main logic, validate and ensure that all required environment variables are set, reducing the risk of runtime failures due to misconfigurations.
+- 🔍 **Transparency**: Functions like `list_all_vars` and `dump_all_vars` allow for introspection, aiding in debugging and ensuring all necessary environment variables have been registered.
 
 ## Getting Started
 
@@ -19,33 +22,7 @@ Add `env-inventory` to your `Cargo.toml`:
 env-inventory = "0.2" # Check crates.io for the latest version
 ```
 
-### Usage
+Usage
 
-1. Define required environment variables using the `RequiredVar` struct.
-
-```rust
-env_inventory::register!("DATABASE_URL");
-```
-
-2. Load and validate environment variables from your TOML configurations:
-
-```rust
-let paths = ["path/to/settings.toml"];
-env_inventory::load_and_validate_env_vars(&paths, "env").unwrap();
-```
-
-## Error Handling
-
-The library provides an `EnvInventoryError` enum to handle various error types such as:
-- Reading or parsing the settings file.
-- Missing required environment variables.
-
-## Contributing
-
-Pull requests are welcome. Please ensure that your PR passes all the tests before submitting.
-Unless otherwise stated, your contributions are assumed to be under the MIT license.
-
-## License
-
-[MIT](LICENSE)
+   Register the environment variables your application or crate depends on:
 
