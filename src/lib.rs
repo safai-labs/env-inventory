@@ -83,6 +83,19 @@ macro_rules! register {
         };
     };
 
+    ($var:ident | $err:expr ) => {
+        const _: () = {
+            use $crate::RequiredVar;
+            $crate::inventory::submit!(RequiredVar {
+                name: stringify!($var),
+                default: None,
+                error: Some($err),
+                source: file!(),
+                priority: $crate::Priority::Library,
+            });
+        };
+    };
+
     ($($var:ident),* $(,)?) => {
         const _: () = {
             use $crate::RequiredVar;
@@ -92,6 +105,14 @@ macro_rules! register {
         };
     };
 
+    ($($var:ident | $err:expr),* $(,)?) => {
+        const _: () => {
+            use $crate::RequiredVar;
+            $(
+                $crate::register!($var | $err);
+            )*
+        };
+    };
 
     ($var:ident = $default:expr) => {
         const _: () = {
@@ -99,6 +120,7 @@ macro_rules! register {
             $crate::inventory::submit!(RequiredVar {
                 name: stringify!($var),
                 default: Some($default),
+                error: None,
                 source: file!(),
                 priority: $crate::Priority::Library,
             });
@@ -120,6 +142,7 @@ macro_rules! register {
             $crate::inventory::submit!(RequiredVar {
                 name: stringify!($var),
                 default: Some($default),
+                error: None,
                 source: file!(),
                 priority: $crate::Priority::$priority,
             });
@@ -211,6 +234,7 @@ pub enum Priority {
 pub struct RequiredVar {
     pub name: &'static str,
     pub default: Option<&'static str>,
+    pub error: Option<&'static str>,
     pub source: &'static str,
     pub priority: Priority,
 }
@@ -223,6 +247,7 @@ impl RequiredVar {
         Self {
             name,
             default: None,
+            error: None,
             source: "<none>",
             priority: Priority::Library,
         }
@@ -292,13 +317,17 @@ impl RequiredVar {
 
 pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
     let missing_vars: HashSet<String> = inventory::iter::<RequiredVar>()
-    .filter_map(|var| {
-        if var.is_set() {
-            None
-        } else {
-            Some(var.name.to_string())
-            // format!("{} (default: \"{}\")", var.name.to_string(), var.default.unwrap_or("")).into()
-        }
+        .filter_map(|var| {
+            if var.is_set() {
+                None
+            } else {
+                let msg = if let Some(err) = var.error {
+                    format!("{}: {}", var.name, err)
+                } else {
+                    format!("{}: {}", var.name, "missing")
+                };
+                Some(msg)
+            }
     })
     .collect();
     let mut missing_vars = missing_vars.into_iter().collect::<Vec<String>>();
@@ -307,7 +336,7 @@ pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
     if missing_vars.is_empty() {
         Ok(())
     } else {
-        tracing::warn!("Missing required environment variables: {:?}", missing_vars);
+        // tracing::warn!("Missing required environment variables: {:?}", missing_vars);
         Err(EnvInventoryError::MissingEnvVars(missing_vars))
     }
 }
@@ -369,7 +398,7 @@ pub fn expanded_map() -> Result<HashMap<String, String>, EnvInventoryError> {
             if let Some(value) = var.get() {
                 let value = shellexpand::full(&value)
                     .map_err(|e| EnvInventoryError::MissingEnvVar(
-                        e.to_string()) 
+                        e.to_string())
                     )?
                     .to_string();
                 std::env::set_var(var.name, &value);
@@ -380,7 +409,7 @@ pub fn expanded_map() -> Result<HashMap<String, String>, EnvInventoryError> {
     for (key, value) in seen_vars.iter() {
         let value = shellexpand::full(&value)
             .map_err(|e| EnvInventoryError::MissingEnvVar(
-                e.to_string()) 
+                e.to_string())
             )?
             .to_string();
         std::env::set_var(key, &value);
