@@ -226,11 +226,10 @@ pub enum Priority {
     Unknown,
     Library,
     Binary,
-
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequiredVar {
     pub name: &'static str,
     pub default: Option<&'static str>,
@@ -238,9 +237,30 @@ pub struct RequiredVar {
     pub source: &'static str,
     pub priority: Priority,
 }
+impl std::fmt::Debug for RequiredVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "RequiredVar {{ name: {}, default: {:?}, error: {:?}, source: {}, priority: {:?} }}",
+            self.name, self.default, self.error, self.source, self.priority
+        )
+    }
+}
 
+impl std::fmt::Display for RequiredVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "RequiredVar {{ name: {}, default: {:?}, error: {:?}, source: {}, priority: {:?} }}",
+            self.name, self.default, self.error, self.source, self.priority
+        )
+    }
+}
+
+// This macro is used to register the `RequiredVar` struct with the inventory
+// system. It allows the `RequiredVar` instances to be collected and managed
+// by the inventory crate.
 inventory::collect!(RequiredVar);
-
 impl RequiredVar {
     /// Creates a new `RequiredVar` instance at compile time.
     pub const fn new(name: &'static str) -> Self {
@@ -255,7 +275,7 @@ impl RequiredVar {
 
     /// Checks if the variable is set in the environment or has a default value.
     pub fn is_set(&self) -> bool {
-        // If the variable is set in the environment, or 
+        // If the variable is set in the environment, or
         // we have a default value, we're good
         env::var(self.name).is_ok() || self.default.is_some()
     }
@@ -322,16 +342,17 @@ pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
                 None
             } else {
                 let msg = if let Some(err) = var.error {
-                    format!("{}: {}", var.name, err)
+                    format!("{}={}", var.name, err)
                 } else {
-                    format!("{}: {}", var.name, "missing")
+                    format!("{}={}", var.name, "(missing)")
                 };
                 Some(msg)
             }
-    })
-    .collect();
+        })
+        .collect();
     let mut missing_vars = missing_vars.into_iter().collect::<Vec<String>>();
     missing_vars.sort();
+    
 
     if missing_vars.is_empty() {
         Ok(())
@@ -345,9 +366,7 @@ pub fn validate_env_vars() -> Result<(), EnvInventoryError> {
 /// that are expected from different parts of the application.
 pub fn list_all_vars() -> Vec<String> {
     let mut v: Vec<String> = inventory::iter::<RequiredVar>()
-        .map(|var| {
-            var.name.to_string()
-        })
+        .map(|v| format!("{:#?}", v))
         .collect();
     v.sort();
     v
@@ -357,7 +376,8 @@ pub fn list_all_vars() -> Vec<String> {
 
 pub fn dump_all_vars() {
     let mut v: Vec<String> = inventory::iter::<RequiredVar>()
-        .map(|v| format!("{:#?}", v)).collect();
+        .map(|v| format!("{:#?}", v))
+        .collect();
     v.sort();
     dbg!(v);
 }
@@ -397,10 +417,9 @@ pub fn expanded_map() -> Result<HashMap<String, String>, EnvInventoryError> {
         if !seen_vars.contains_key(var.name) {
             if let Some(value) = var.get() {
                 let value = shellexpand::full(&value)
-                    .map_err(|e| EnvInventoryError::MissingEnvVar(
-                        e.to_string())
-                    )?
+                    .map_err(|e| EnvInventoryError::MissingEnvVar(e.to_string()))?
                     .to_string();
+
                 std::env::set_var(var.name, &value);
                 seen_vars.insert(var.name.to_string(), value);
             }
@@ -408,10 +427,9 @@ pub fn expanded_map() -> Result<HashMap<String, String>, EnvInventoryError> {
     }
     for (key, value) in seen_vars.iter() {
         let value = shellexpand::full(&value)
-            .map_err(|e| EnvInventoryError::MissingEnvVar(
-                e.to_string())
-            )?
+            .map_err(|e| EnvInventoryError::MissingEnvVar(e.to_string()))?
             .to_string();
+
         std::env::set_var(key, &value);
     }
     Ok(seen_vars)
@@ -425,9 +443,10 @@ pub(crate) fn load_toml_settings<P: AsRef<Path>>(
     let content = fs::read_to_string(&path)
         .map_err(|_| EnvInventoryError::ReadFileError(path.as_ref().display().to_string()))?;
 
-    let value = content
-        .parse::<Value>()
-        .map_err(|_| EnvInventoryError::ParseFileError(path.as_ref().display().to_string()))?;
+    let value = content.parse::<Value>().map_err(|e| {
+        eprintln!("Error parsing TOML: {}", e);
+        EnvInventoryError::ParseFileError(path.as_ref().display().to_string())
+    })?;
 
     let env_section = match value.get(section) {
         Some(env) => env.as_table(),
@@ -443,7 +462,6 @@ pub(crate) fn load_toml_settings<P: AsRef<Path>>(
             }
         }
     }
-
     Ok(settings)
 }
 
@@ -525,6 +543,11 @@ pub fn load_and_validate_env_vars<P: AsRef<Path>>(
             Err(e) => {
                 if index == 0 {
                     // The first file is mandatory
+                    eprintln!(
+                        "Error: Could not load settings from {:?}. Reason: {}",
+                        path.as_ref(),
+                        e
+                    );
                     return Err(e);
                 } else {
                     // Subsequent files are optional, but let's warn for transparency
@@ -634,7 +657,6 @@ pub fn __old_load_and_validate_env_vars<P: AsRef<Path>>(
         tracing::info!("{} = {}", key, value);
     }
     return validate_env_vars();
-
 }
 
 #[cfg(test)]
@@ -644,7 +666,7 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    register!("TEST_ENV_VAR");
+    register!(TEST_ENV_VAR = "foo"; Binary);
 
     #[test]
     fn test_load_single_toml() {
@@ -665,7 +687,8 @@ mod tests {
         fs::write(&file_path1, "[env]\nTEST_ENV_VAR = \"value1\"").unwrap();
         fs::write(&file_path2, "[env]\nTEST_ENV_VAR = \"value2\"").unwrap();
 
-        load_and_validate_env_vars(&[file_path2, file_path1], "env").unwrap();
+        eprintln!("files are in {} directory", dir.path().display());
+        load_and_validate_env_vars(&[file_path1, file_path2], "env").unwrap();
         assert_eq!(env::var("TEST_ENV_VAR").unwrap(), "value2");
     }
 
@@ -691,7 +714,7 @@ mod tests {
         env::remove_var("MISSING_VAR");
 
         // Register MISSING_VAR as a required environment variable
-        register!("MISSING_VAR");
+        register!(MISSING_VAR);
 
         // Since MISSING_VAR isn't in the environment and also isn't in the TOML files,
         // the function should return an error.
@@ -719,7 +742,7 @@ mod tests {
         env::remove_var("PRESENT_VAR");
 
         // Register PRESENT_VAR as a required environment variable
-        register!("PRESENT_VAR");
+        register!(PRESENT_VAR = "default_value"; Binary);
 
         // Since PRESENT_VAR is in the TOML file, the function should run without errors
         load_and_validate_env_vars(&[file_path], "env").unwrap();

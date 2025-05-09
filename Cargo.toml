@@ -1,23 +1,23 @@
 [package]
 name = "env-inventory"
 description = "A simple library to load globally available environment variables into a static inventory."
-version = "0.2.3"
+version = "0.2.4"
 license = "MIT"
 resolver = "2"
-authors = [ "Ahmed Masud <ahmed.masud@saf.ai>"]
+authors = ["Ahmed Masud <ahmed.masud@saf.ai>"]
 edition = "2021"
 rust-version = "1.61"
 repository = "https://github.com/safai-labs/env-inventory.git"
-docs = "https://docs.rs/env-inventory"
+# docs = "https://docs.rs/env-inventory"
 
 [lib]
 
 [dependencies]
-inventory = "0.3"
+inventory = "0.3.20"
 shellexpand = { version = "3.1.0", features = ["full"] }
-thiserror = "1.0"
-toml = "0.8.0"
-tracing = "0.1"
+thiserror = "2.0.12"
+toml = { version = "0.8.20", features = ["default"] }
+tracing = "0.1.41"
 
 [profile.release]
 incremental = false
@@ -26,4 +26,4 @@ incremental = false
 incremental = false
 
 [dev-dependencies]
-tempfile = "3.8.0"
+tempfile = "3.19.1"
